@@ -1,0 +1,25 @@
+replicaCount: 2
+
+image:
+  repository: ""   # set by the deploy workflow
+  tag: ""          # set by the deploy workflow (git commit SHA)
+  pullPolicy: IfNotPresent
+
+service:
+  type: LoadBalancer
+  port: 80
+  targetPort: 8080
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 64Mi
+  limits:
+    cpu: 200m
+    memory: 128Mi
+
+autoscaling:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 6
+  targetCPUUtilizationPercentage: 50
