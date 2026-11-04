@@ -1,6 +1,6 @@
 # AWS EKS Platform with Terraform and GitHub Actions
 
-**Status:** 🚧 In progress
+**Status:** ✅ Complete
 
 ## Video Walkthrough
 
@@ -66,7 +66,7 @@ flowchart LR
 
 ## Prerequisites
 
-- AWS account (I used my AWS Organizations management account) with the AWS CLI v2 signed in as an administrator
+- AWS account (I used my AWS Organizations management account) with the AWS CLI v2 and an `admin` profile for an IAM user with AdministratorAccess
 - Terraform 1.10 or later (needed for S3 native state locking)
 - kubectl and Helm for local verification
 - GitHub CLI (`gh`) signed in to my account
@@ -109,17 +109,24 @@ gh repo create gavinbarbee/aws-eks-terraform-pipeline --public `
 
 ### 2. Sign in to AWS and get my admin ARN
 
-EKS access entries need my IAM principal ARN without a path. When signed in through IAM Identity Center, `sts get-caller-identity` returns an assumed-role ARN, so I converted it to the role ARN:
+I created an IAM user, `gavinbarbee-admin`, with the AdministratorAccess policy, created an access key for it, and saved the key as a named CLI profile:
+
+```powershell
+aws configure --profile admin
+$env:AWS_PROFILE = "admin"
+```
+
+I set `$env:AWS_PROFILE = "admin"` in every terminal before running AWS, Terraform, kubectl, or Helm commands.
+
+EKS access entries need my IAM principal ARN. Because I'm signed in as an IAM user and not an assumed role, `sts get-caller-identity` returns the user ARN directly, and I can use it with no conversion:
 
 ```powershell
 aws sts get-caller-identity
-$acct = aws sts get-caller-identity --query Account --output text
-$role = (aws sts get-caller-identity --query Arn --output text).Split('/')[1]
-$adminArn = "arn:aws:iam::${acct}:role/$role"
+$adminArn = aws sts get-caller-identity --query Arn --output text
 $adminArn
 ```
 
-> 📸 Screenshot: caller identity (account ID blurred)
+![Caller identity for the admin IAM user](screenshots/02-caller-identity.png)
 
 ### 3. Bootstrap the state bucket and OIDC role
 
@@ -133,7 +140,7 @@ terraform apply main.tfplan
 cd ..
 ```
 
-> 📸 Screenshot: bootstrap apply output
+![Bootstrap apply output](screenshots/03-bootstrap-apply.png)
 
 ### 4. Store pipeline settings as GitHub variables
 
@@ -147,11 +154,13 @@ gh variable set ADMIN_PRINCIPAL_ARN --body $adminArn
 gh variable list
 ```
 
+![GitHub Actions variables](screenshots/04-github-variables.png)
+
 ### 5. Create the dev environment approval gate
 
 In GitHub: **Settings → Environments → New environment → `dev`**, then I enabled **Required reviewers** and added myself. The apply job pauses here until I approve.
 
-> 📸 Screenshot: dev environment with required reviewer
+![dev environment with required reviewer](screenshots/05-dev-environment.png)
 
 ### 6. Open a pull request to run the security gate and plan
 
@@ -166,8 +175,9 @@ gh pr create --fill
 
 Checkov scans the Terraform first. Results go to **Security → Code scanning** as SARIF, and the plan appears in the run summary.
 
-> 📸 Screenshot: Checkov gate passing
-> 📸 Screenshot: Terraform plan summary on the PR run
+![Checkov gate and plan passing on the PR](screenshots/06-pr-checkov-and-plan.png)
+
+![Terraform plan summary: 61 to add](screenshots/06-plan-61-to-add.png)
 
 ### 7. Merge and approve the apply
 
@@ -179,8 +189,9 @@ git pull
 
 The push to main produces a saved plan, then waits on the `dev` environment. I approved it in the Actions tab. EKS creation takes about 15 minutes.
 
-> 📸 Screenshot: approval prompt
-> 📸 Screenshot: successful apply
+![Approval gate on the dev environment](screenshots/07-approval-gate.png)
+
+![Successful apply after the OIDC trust policy fix](screenshots/06-oidc-trust-fix-apply.png)
 
 ### 8. Connect kubectl from my machine
 
@@ -189,7 +200,11 @@ aws eks update-kubeconfig --region us-east-1 --name eks-gavinbarbee-dev
 kubectl get nodes
 ```
 
-> 📸 Screenshot: two Ready nodes
+![Two Ready nodes](screenshots/08-kubectl-nodes.png)
+
+![EKS cluster overview](screenshots/08-eks-cluster-overview.png)
+
+![EKS access entries](screenshots/08-eks-access-entries.png)
 
 ### 9. Deploy the app
 
@@ -207,7 +222,7 @@ Start-Process "http://$lb"
 ```
 
 > 📸 Screenshot: deploy workflow run
-> 📸 Screenshot: listings page in the browser
+![Listings page in the browser](screenshots/09-listings-page.png)
 
 ### 10. Test autoscaling under load
 
@@ -229,7 +244,7 @@ Once CPU passed the 50% target, the HPA scaled the deployment above 2 replicas. 
 kubectl delete pod load-generator
 ```
 
-> 📸 Screenshot: HPA scaling up
+![HPA scaling up under load](screenshots/10-hpa-scale-up.png)
 
 ### 11. Push a bad release and roll it back
 
@@ -248,8 +263,9 @@ helm rollback listings
 kubectl get pods
 ```
 
-> 📸 Screenshot: ImagePullBackOff on the bad release
-> 📸 Screenshot: helm history after rollback
+![ImagePullBackOff on the bad release](screenshots/11-bad-release.png)
+
+![helm history after rollback](screenshots/11-rollback-history.png)
 
 ## Verification Checklist
 
@@ -267,23 +283,40 @@ kubectl get pods
 
 | Issue | Cause | Fix |
 |---|---|---|
-| | | |
+| `InvalidClientTokenId` on every AWS CLI call, and IAM Identity Center sign-in failing through Entra ID | My old long-lived access keys were deactivated, and the Identity Center sign-in through my Entra ID federation wouldn't complete | Created a dedicated IAM user (`gavinbarbee-admin`) with AdministratorAccess, saved its keys with `aws configure --profile admin`, and set `$env:AWS_PROFILE = "admin"` |
+| Checkov failed with `CKV_AWS_394` on the `aws_availability_zones` data source | Looking up zones by name means a change in the returned zone list could shift subnets to different zones | Pinned the zone IDs `use1-az1` and `use1-az2` instead of looking up zone names |
+| `AssumeRoleWithWebIdentity` denied in GitHub Actions | The repo uses GitHub immutable subject claims, so the OIDC token's `sub` includes the owner and repo IDs, not just the names | Updated the trust policy `sub` condition to match the owner and repo IDs |
+| **Review deployments** button missing on the waiting apply job | **Prevent self-review** was on for the `dev` environment, and I'm the only reviewer and the one who triggered the run | Unchecked **Prevent self-review** on the `dev` environment |
 
 ## Cleanup
 
-The load balancer must be removed before Terraform destroys the VPC, or the destroy hangs on its network interfaces.
+The load balancer must be removed before Terraform destroys the VPC, or the destroy hangs on its network interfaces. I uninstalled the Helm releases first, then confirmed the service and its load balancer were gone:
 
 ```powershell
+$env:AWS_PROFILE = "admin"
 helm uninstall listings
 helm uninstall metrics-server --namespace kube-system
+kubectl get svc
+aws elb describe-load-balancers --query "LoadBalancerDescriptions[].LoadBalancerName"
+```
 
+Then I destroyed the platform stack with a saved plan (61 to destroy):
+
+```powershell
 cd terraform
 terraform init -backend-config="bucket=$(terraform -chdir=..\bootstrap output -raw state_bucket)"
 terraform plan -destroy -var "admin_principal_arn=$adminArn" "-out=destroy.tfplan"
 terraform apply destroy.tfplan
-cd ..\bootstrap
+cd ..
+```
+
+I kept the bootstrap stack (state bucket, OIDC provider, and IAM role) because the follow-up labs in this series reuse it. When the series is finished, the last step is to destroy it too:
+
+```powershell
+cd bootstrap
 terraform plan -destroy "-out=destroy.tfplan"
 terraform apply destroy.tfplan
+cd ..
 ```
 
 ## Key Takeaways
