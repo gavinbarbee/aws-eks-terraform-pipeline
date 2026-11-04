@@ -30,9 +30,11 @@ variable "region" {
   default = "us-east-1"
 }
 
-variable "github_repo" {
+# The repo has immutable subject claims enabled, so the OIDC sub
+# includes owner and repo IDs (owner@id/repo@id), not just the name
+variable "github_sub_prefix" {
   type    = string
-  default = "gavinbarbee/aws-eks-terraform-pipeline"
+  default = "repo:gavinbarbee@177060158/aws-eks-terraform-pipeline@1446122516"
 }
 
 resource "random_id" "suffix" {
@@ -95,7 +97,7 @@ data "aws_iam_policy_document" "github_trust" {
     condition {
       test     = "StringLike"
       variable = "token.actions.githubusercontent.com:sub"
-      values   = ["repo:${var.github_repo}:*"]
+      values   = ["${var.github_sub_prefix}:*"]
     }
   }
 }
