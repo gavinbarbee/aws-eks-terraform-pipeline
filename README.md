@@ -321,8 +321,13 @@ cd ..
 
 ## Key Takeaways
 
-_Written after the build._
+- **Security gates catch real problems, not just style issues.** Checkov flagged CKV_AWS_394 on my availability zone lookup. If AWS had ever reordered the zone list, Terraform would have tried to replace my subnets and cluster networking. Pinning zone IDs (use1-az1, use1-az2) instead of zone names fixed it, and zone IDs also map to the same physical zones in every account.
+- **OIDC trust policies have to match the exact token GitHub sends.** My repo uses GitHub's immutable subject claims, so the sub includes the owner and repo IDs, not just the names. The fix was stricter than the original policy: the role now trusts this exact repo, so a renamed or recreated repo with the same name can't assume it. CloudTrail showed me the exact sub GitHub sent, which made the mismatch obvious.
+- **Approval gates are only as strong as their settings.** Turning off admin bypass meant every apply needed my review, with no exceptions. Prevent self-review blocked me as the only reviewer, which showed me how that setting works on a real team: the person who triggers a deploy can't approve it.
+- **Kubernetes protects users from bad deploys when the basics are in place.** When I pushed a release with an image that didn't exist, the new pod failed with ImagePullBackOff while the old pods kept serving traffic, because readiness probes and the rolling update held the broken pod out of rotation. helm rollback restored the working release in seconds.
+- **Patterns carry across clouds.** This was a rebuild of my Azure DevSecOps pipeline on AWS. OIDC federation, a security gate before plan, and approval before a saved-plan apply all worked the same way. Only the provider details changed: IAM roles instead of federated credentials, and S3 native locking instead of a blob lease.
+- **Check support dates before picking a version.** I confirmed Kubernetes 1.35 was in EKS standard support until March 2027 before building, because a version in extended support costs six times as much for the control plane.
 
 ---
 
-*Built by Gavin Barbee · Time to complete: to be updated after the build*
+*Built by Gavin Barbee · Time to complete: about 1.5 hours*
