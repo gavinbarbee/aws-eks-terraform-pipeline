@@ -191,7 +191,7 @@ The push to main produces a saved plan, then waits on the `dev` environment. I a
 
 ![Approval gate on the dev environment](screenshots/07-approval-gate.png)
 
-![Successful apply after the OIDC trust policy fix](screenshots/06-oidc-trust-fix-apply.png)
+![Successful Terraform apply](screenshots/07-terraform-apply.png)
 
 ### 8. Connect kubectl from my machine
 
@@ -221,7 +221,7 @@ $lb = kubectl get svc listings -o jsonpath='{.status.loadBalancer.ingress[0].hos
 Start-Process "http://$lb"
 ```
 
-> 📸 Screenshot: deploy workflow run
+![Deploy workflow run](screenshots/09-deploy-run.png)
 ![Listings page in the browser](screenshots/09-listings-page.png)
 
 ### 10. Test autoscaling under load
@@ -287,6 +287,10 @@ kubectl get pods
 | Checkov failed with `CKV_AWS_394` on the `aws_availability_zones` data source | Looking up zones by name means a change in the returned zone list could shift subnets to different zones | Pinned the zone IDs `use1-az1` and `use1-az2` instead of looking up zone names |
 | `AssumeRoleWithWebIdentity` denied in GitHub Actions | The repo uses GitHub immutable subject claims, so the OIDC token's `sub` includes the owner and repo IDs, not just the names | Updated the trust policy `sub` condition to match the owner and repo IDs |
 | **Review deployments** button missing on the waiting apply job | **Prevent self-review** was on for the `dev` environment, and I'm the only reviewer and the one who triggered the run | Unchecked **Prevent self-review** on the `dev` environment |
+
+![Re-applying the bootstrap stack after updating the trust policy sub for immutable OIDC claims](screenshots/06-oidc-trust-fix-apply.png)
+
+Re-applying the bootstrap stack after updating the trust policy sub for immutable OIDC claims.
 
 ## Cleanup
 
